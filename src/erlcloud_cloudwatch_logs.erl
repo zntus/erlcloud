@@ -31,6 +31,19 @@
 
 -type log_group() :: jsx:json_term().
 
+-type log_group_name() :: string() | binary() | undefined.
+-type log_stream_name() :: string() | binary() | undefined.
+-type success_create_log_stream() :: ok.
+-type result_create_log_stream() :: success_create_log_stream() | error_result().
+
+-type sequence_token() :: string() | binary() | undefined.
+-type log_event_message() :: string() | binary().
+-type log_event_timestamp() :: integer().
+-type log_event() :: {log_event_message(), log_event_timestamp()}.
+-type log_events() :: [log_event()].
+-type rejected_log_events_info() :: jsx:json_term() | undefined.
+-type success_put_events() :: {ok, sequence_token()} | {ok, sequence_token(), rejected_log_events_info()}.
+-type result_put_events() :: success_put_events() | error_result().
 
 %% Library initialization
 -export([
@@ -47,7 +60,14 @@
     describe_log_groups/1,
     describe_log_groups/2,
     describe_log_groups/3,
-    describe_log_groups/4
+    describe_log_groups/4,
+
+    create_log_stream/2,
+    create_log_stream/3,
+
+    put_log_events/3,
+    put_log_events/4,
+    put_log_events/5
 ]).
 
 
@@ -135,6 +155,10 @@ describe_log_groups(LogGroupNamePrefix, Limit, Config) ->
     paging_token(),
     aws_config()
 ) -> result_paged(log_group()).
+describe_log_groups(LogGroupNamePrefix, Limit, PrevToken, Config) when is_list(LogGroupNamePrefix) ->
+    describe_log_groups(list_to_binary(LogGroupNamePrefix), Limit, PrevToken, Config);
+describe_log_groups(LogGroupNamePrefix, Limit, PrevToken, Config) when is_list(PrevToken) ->
+    describe_log_groups(LogGroupNamePrefix, Limit, list_to_binary(PrevToken), Config);
 describe_log_groups(LogGroupNamePrefix, Limit, PrevToken, Config) ->
     case cw_request(Config, "DescribeLogGroups", [
         {<<"limit">>, Limit},
@@ -149,6 +173,69 @@ describe_log_groups(LogGroupNamePrefix, Limit, PrevToken, Config) ->
             {error, Reason}
     end.
 
+-spec create_log_stream(
+    log_group_name(),
+    log_stream_name()
+) -> result_create_log_stream().
+create_log_stream(LogGroupName, LogStreamName) ->
+    create_log_stream(LogGroupName, LogStreamName, default_config()).
+
+-spec create_log_stream(
+    log_group_name(),
+    log_stream_name(),
+    aws_config()
+) -> result_create_log_stream().
+create_log_stream(LogGroupName, LogStreamName, Config) when is_list(LogGroupName)->
+    create_log_stream(list_to_binary(LogGroupName), LogStreamName, Config);
+create_log_stream(LogGroupName, LogStreamName, Config) when is_list(LogStreamName)->
+    create_log_stream(LogGroupName, list_to_binary(LogStreamName), Config);
+create_log_stream(LogGroupName, LogStreamName, Config) ->
+    case cw_request(Config, "CreateLogStream", [
+        {<<"logGroupName">>, LogGroupName},
+        {<<"logStreamName">>, LogStreamName}
+    ]) of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+-spec put_log_events(
+    log_events(),
+    log_group_name(),
+    log_stream_name()
+) -> result_put_events().
+put_log_events(LogEvents, LogGroupName, LogStreamName) ->
+    put_log_events(LogEvents, LogGroupName, LogStreamName, undefined).
+
+-spec put_log_events(
+    log_events(),
+    log_group_name(),
+    log_stream_name(),
+    sequence_token()
+) -> result_put_events().
+put_log_events(LogEvents, LogGroupName, LogStreamName, SequenceToken) ->
+    put_log_events(LogEvents, LogGroupName, LogStreamName, SequenceToken, default_config()).
+
+-spec put_log_events(
+    log_events(),
+    log_group_name(),
+    log_stream_name(),
+    sequence_token(),
+    aws_config()
+) -> result_put_events().
+put_log_events(LogEvents, LogGroupName, LogStreamName, SequenceToken, Config) ->
+    case cw_request(Config, "PutLogEvents",make_put_log_events_params(
+        LogEvents,
+        LogGroupName,
+        LogStreamName,
+        SequenceToken))
+    of
+        {ok, Data} ->
+            NextSequenceToken = proplists:get_value(<<"nextSequenceToken">>, Data, undefined),
+            RejectedLogEventsInfo = proplists:get_value(<<"rejectedLogEventsInfo">>, Data, undefined),
+            {ok, NextSequenceToken, RejectedLogEventsInfo};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %%==============================================================================
 %% Internal functions
@@ -168,6 +255,7 @@ cw_request(Config, Action, Params) ->
             RequestHeaders = make_request_headers(
                 NewConfig, Action, RequestBody
             ),
+            io:format("Body: ~s", [RequestBody]),
             case erlcloud_aws:aws_request_form_raw(
                 post,
                 NewConfig#aws_config.cloudwatch_logs_scheme,
@@ -179,7 +267,11 @@ cw_request(Config, Action, Params) ->
                 NewConfig
             ) of
                 {ok, ResponseBody} ->
-                    {ok, jsx:decode(ResponseBody)};
+                    Resp = try jsx:decode(ResponseBody)
+                           catch
+                               _:_ -> {}
+                           end,
+                    {ok, Resp};
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -212,7 +304,27 @@ prepare_request_params(Params) ->
 
 prepare_request_param({_Key, undefined}) ->
     false;
-prepare_request_param({Key, Value}) when is_list(Value) ->
-    {true, {Key, list_to_binary(Value)}};
+
 prepare_request_param({Key, Value}) ->
     {true, {Key, Value}}.
+
+make_put_log_events_params(LogEvents, LogGroupName, LogStreamName, SequenceToken) when is_list(LogGroupName) ->
+    make_put_log_events_params(LogEvents, list_to_binary(LogGroupName), LogStreamName, SequenceToken);
+make_put_log_events_params(LogEvents, LogGroupName, LogStreamName, SequenceToken) when is_list(LogStreamName) ->
+    make_put_log_events_params(LogEvents, LogGroupName, list_to_binary(LogStreamName), SequenceToken);
+make_put_log_events_params(LogEvents, LogGroupName, LogStreamName, SequenceToken) when is_list(SequenceToken) ->
+    make_put_log_events_params(LogEvents, LogGroupName, LogStreamName, list_to_binary(SequenceToken));
+make_put_log_events_params(LogEvents, LogGroupName, LogStreamName, undefined) ->
+    [
+        {<<"logEvents">>, LogEvents},
+        {<<"logGroupName">>, LogGroupName},
+        {<<"logStreamName">>, LogStreamName}
+    ];
+
+make_put_log_events_params(LogEvents, LogGroupName, LogStreamName, SequenceToken) ->
+    [
+        {<<"logEvents">>, LogEvents},
+        {<<"logGroupName">>, LogGroupName},
+        {<<"logStreamName">>, LogStreamName},
+        {<<"sequenceToken">>, SequenceToken}
+    ].
