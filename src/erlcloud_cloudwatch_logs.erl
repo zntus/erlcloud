@@ -38,12 +38,17 @@
 
 -type sequence_token() :: string() | binary() | undefined.
 -type log_event_message() :: string() | binary().
--type log_event_timestamp() :: integer().
+-type log_event_timestamp() :: pos_integer().
 -type log_event() :: {log_event_message(), log_event_timestamp()}.
 -type log_events() :: [log_event()].
 -type rejected_log_events_info() :: jsx:json_term() | undefined.
 -type success_put_events() :: {ok, sequence_token()} | {ok, sequence_token(), rejected_log_events_info()}.
 -type result_put_events() :: success_put_events() | error_result().
+
+-type log_stream_name_prefix() :: string() | binary() | undefined.
+-type descending() :: boolean().
+-type log_stream_order() :: log_stream_name | last_event_time.
+-type log_stream() :: jsx:json_term().
 
 %% Library initialization
 -export([
@@ -67,7 +72,14 @@
 
     put_log_events/3,
     put_log_events/4,
-    put_log_events/5
+    put_log_events/5,
+
+    describe_log_streams/1,
+    describe_log_streams/2,
+    describe_log_streams/3,
+    describe_log_streams/4,
+    describe_log_streams/5,
+    describe_log_streams/7
 ]).
 
 
@@ -237,6 +249,83 @@ put_log_events(LogEvents, LogGroupName, LogStreamName, SequenceToken, Config) ->
             {error, Reason}
     end.
 
+-spec describe_log_streams(
+    log_group_name()
+) -> result_paged(log_stream()).
+describe_log_streams(LogGroupName) ->
+    describe_log_streams(undefined, undefined, LogGroupName, undefined, undefined, undefined, default_config()).
+
+-spec describe_log_streams(
+    log_group_name(),
+    aws_config() | log_stream_name_prefix()
+) -> result_paged(log_stream()).
+describe_log_streams(LogGroupName, #aws_config{} = Config) ->
+    describe_log_streams(undefined, undefined, LogGroupName, undefined, undefined, undefined, Config);
+
+describe_log_streams(LogGroupName, LogStreamPrefix) ->
+    describe_log_streams(undefined, undefined, LogGroupName, LogStreamPrefix, undefined, undefined, default_config()).
+
+-spec describe_log_streams(
+    log_group_name(),
+    log_stream_name_prefix(),
+    aws_config()
+) -> result_paged(log_stream()).
+describe_log_streams(LogGroupName, LogStreamPrefix, #aws_config{} = Config) ->
+    describe_log_streams(undefined, undefined, LogGroupName, LogStreamPrefix, undefined, undefined, Config).
+
+
+-spec describe_log_streams(
+    limit(),
+    log_group_name(),
+    log_stream_name_prefix(),
+    aws_config()
+) -> result_paged(log_stream()).
+describe_log_streams(Limit, LogGroupName, LogStreamPrefix, #aws_config{} = Config) ->
+    describe_log_streams(undefined, Limit, LogGroupName, LogStreamPrefix, undefined, undefined, Config).
+
+-spec describe_log_streams(
+    limit(),
+    log_group_name(),
+    log_stream_name_prefix(),
+    paging_token(),
+    aws_config()
+) -> result_paged(log_stream()).
+describe_log_streams(Limit, LogGroupName, LogStreamPrefix, PrevToken, #aws_config{} = Config) ->
+    describe_log_streams(undefined, Limit, LogGroupName, LogStreamPrefix, PrevToken, undefined, Config).
+
+-spec describe_log_streams(
+    descending(),
+    limit(),
+    log_group_name(),
+    log_stream_name_prefix(),
+    paging_token(),
+    log_stream_order(),
+    aws_config()
+) -> result_paged(log_stream()).
+describe_log_streams(Descending, Limit, LogGroupName, LogStreamPrefix, PrevToken, Order, Config) when is_list(LogGroupName) ->
+    describe_log_streams(Descending, Limit, list_to_binary(LogGroupName), LogStreamPrefix, PrevToken, Order, Config);
+describe_log_streams(Descending, Limit, LogGroupName, LogStreamPrefix, PrevToken, Order, Config) when is_list(LogStreamPrefix) ->
+    describe_log_streams(Descending, Limit, LogGroupName, list_to_binary(LogStreamPrefix), PrevToken, Order, Config);
+describe_log_streams(Descending, Limit, LogGroupName, LogStreamPrefix, PrevToken, Order, Config) when is_list(PrevToken) ->
+    describe_log_streams(Descending, Limit, LogGroupName, LogStreamPrefix, list_to_binary(PrevToken), Order, Config);
+describe_log_streams(Descending, Limit, LogGroupName, LogStreamPrefix, PrevToken, Order, Config) ->
+    OrderBin = log_stream_order_to_binary(Order),
+    case cw_request(Config, "DescribeLogStreams", [
+        {<<"descending">>, Descending},
+        {<<"limit">>, Limit},
+        {<<"logGroupName">>, LogGroupName},
+        {<<"logStreamNamePrefix">>, LogStreamPrefix},
+        {<<"nextToken">>, PrevToken},
+        {<<"orderBy">>, OrderBin}
+    ]) of
+        {ok, Data} ->
+            LogStreams = proplists:get_value(<<"logStreams">>, Data, []),
+            NextToken = proplists:get_value(<<"nextToken">>, Data, undefined),
+            {ok, LogStreams, NextToken};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
 %%==============================================================================
 %% Internal functions
 %%==============================================================================
@@ -255,7 +344,6 @@ cw_request(Config, Action, Params) ->
             RequestHeaders = make_request_headers(
                 NewConfig, Action, RequestBody
             ),
-            io:format("Body: ~s", [RequestBody]),
             case erlcloud_aws:aws_request_form_raw(
                 post,
                 NewConfig#aws_config.cloudwatch_logs_scheme,
@@ -328,3 +416,7 @@ make_put_log_events_params(LogEvents, LogGroupName, LogStreamName, SequenceToken
         {<<"logStreamName">>, LogStreamName},
         {<<"sequenceToken">>, SequenceToken}
     ].
+
+log_stream_order_to_binary(log_stream_name) -> <<"LogStreamName">>;
+log_stream_order_to_binary(log_event_time) -> <<"LogEventTime">>;
+log_stream_order_to_binary(_) -> undefined.
