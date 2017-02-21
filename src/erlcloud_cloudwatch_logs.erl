@@ -140,6 +140,8 @@ describe_log_groups() ->
 ) -> result_paged(log_group()).
 describe_log_groups(#aws_config{} = Config) ->
     describe_log_groups(undefined, Config);
+describe_log_groups(LogGroupNamePrefix) when is_list(LogGroupNamePrefix) ->
+    describe_log_groups(list_to_binary(LogGroupNamePrefix));
 describe_log_groups(LogGroupNamePrefix) ->
     describe_log_groups(LogGroupNamePrefix, default_config()).
 
@@ -148,6 +150,8 @@ describe_log_groups(LogGroupNamePrefix) ->
     log_group_name_prefix(),
     aws_config()
 ) -> result_paged(log_group()).
+describe_log_groups(LogGroupNamePrefix, Config) when is_list(LogGroupNamePrefix) ->
+    describe_log_groups(list_to_binary(LogGroupNamePrefix), Config);
 describe_log_groups(LogGroupNamePrefix, Config) ->
     describe_log_groups(LogGroupNamePrefix, ?DEFAULT_LIMIT, Config).
 
@@ -157,6 +161,8 @@ describe_log_groups(LogGroupNamePrefix, Config) ->
     limit(),
     aws_config()
 ) -> result_paged(log_group()).
+describe_log_groups(LogGroupNamePrefix, Limit, Config) when is_list(LogGroupNamePrefix) ->
+    describe_log_groups(list_to_binary(LogGroupNamePrefix), Limit, Config);
 describe_log_groups(LogGroupNamePrefix, Limit, Config) ->
     describe_log_groups(LogGroupNamePrefix, Limit, undefined, Config).
 
@@ -253,17 +259,17 @@ put_log_events(LogEvents, LogGroupName, LogStreamName, SequenceToken, Config) ->
     log_group_name()
 ) -> result_paged(log_stream()).
 describe_log_streams(LogGroupName) ->
-    describe_log_streams(undefined, undefined, LogGroupName, undefined, undefined, undefined, default_config()).
+    describe_log_streams(undefined, ?DEFAULT_LIMIT, LogGroupName, undefined, undefined, undefined, default_config()).
 
 -spec describe_log_streams(
     log_group_name(),
     aws_config() | log_stream_name_prefix()
 ) -> result_paged(log_stream()).
 describe_log_streams(LogGroupName, #aws_config{} = Config) ->
-    describe_log_streams(undefined, undefined, LogGroupName, undefined, undefined, undefined, Config);
+    describe_log_streams(undefined, ?DEFAULT_LIMIT, LogGroupName, undefined, undefined, undefined, Config);
 
 describe_log_streams(LogGroupName, LogStreamPrefix) ->
-    describe_log_streams(undefined, undefined, LogGroupName, LogStreamPrefix, undefined, undefined, default_config()).
+    describe_log_streams(undefined, ?DEFAULT_LIMIT, LogGroupName, LogStreamPrefix, undefined, undefined, default_config()).
 
 -spec describe_log_streams(
     log_group_name(),
@@ -271,7 +277,7 @@ describe_log_streams(LogGroupName, LogStreamPrefix) ->
     aws_config()
 ) -> result_paged(log_stream()).
 describe_log_streams(LogGroupName, LogStreamPrefix, #aws_config{} = Config) ->
-    describe_log_streams(undefined, undefined, LogGroupName, LogStreamPrefix, undefined, undefined, Config).
+    describe_log_streams(undefined, ?DEFAULT_LIMIT, LogGroupName, LogStreamPrefix, undefined, undefined, Config).
 
 
 -spec describe_log_streams(
@@ -381,10 +387,16 @@ make_signed_headers(Config, Action, Body) ->
 
 
 make_request_body(Action, RequestParams) ->
-    DefaultParams = [{<<"Action">>, Action}, {<<"Version">>, ?API_VERSION}],
+    DefaultParams = default_request_body_params(Action, ?API_VERSION),
     Params = lists:append(DefaultParams, RequestParams),
     jsx:encode(prepare_request_params(Params)).
 
+default_request_body_params(Action, Version) when is_list(Action) ->
+    default_request_body_params(list_to_binary(Action), Version);
+default_request_body_params(Action, Version) when is_list(Version) ->
+    default_request_body_params(Action, list_to_binary(Version));
+default_request_body_params(Action, Version) ->
+    [{<<"Action">>, Action}, {<<"Version">>, Version}].
 
 prepare_request_params(Params) ->
     lists:filtermap(fun prepare_request_param/1, Params).
