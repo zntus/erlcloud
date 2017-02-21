@@ -48,6 +48,24 @@
     {<<"storedBytes">>, 85}
 ]).
 
+-define(LOG_STREAM_NAME_PREFIX, <<"my-log-stream-1">>).
+-define(DESCEDING_ORDER, true).
+-define(ORDER_BY_LOG_STREAM_NAME_ATOM, log_stream_name).
+-define(ORDER_BY_LOG_STREAM_NAME_BIN, <<"LogStreamName">>).
+-define(ORDER_BY_LOG_EVENT_TIME_ATOM, log_event_time).
+-define(ORDER_BY_LOG_EVENT_TIME_BIN, <<"LogEventTime">>).
+
+-define(LOG_STREAMS, [
+    {<<"arn">>, <<"arn:aws:logs:us-east-1:123456789012:log-group:my-log-group-1:log-stream:my-log-stream-1">>},
+    {<<"creationTime">>, 1393545600000},
+    {<<"firstEventTimestamp">>, 1393545600000},
+    {<<"lastEventTimestamp">>, 1393567800000},
+    {<<"lastIngestionTime">>, 1393589200000},
+    {<<"logStreamName">>, <<"my-log-stream-1">>},
+    {<<"storedBytes">>, 5242880},
+    {<<"uploadSequenceToken">>, <<"07622379445839968487886029673945314100949536701251562127">>}
+  ]).
+
 
 %%==============================================================================
 %% Test generator functions
@@ -57,7 +75,9 @@
 erlcloud_cloudwatch_test_() ->
     {foreach, fun start/0, fun stop/1, [
         fun describe_log_groups_input_tests/1,
-        fun describe_log_groups_output_tests/1
+        fun describe_log_groups_output_tests/1,
+        fun describe_log_streams_input_tests/1,
+        fun describe_log_streams_output_tests/1
     ]}.
 
 
@@ -159,6 +179,147 @@ describe_log_groups_output_tests(_) ->
         )
     ]).
 
+
+describe_log_streams_input_tests(_) ->
+  input_tests(jsx:encode([{<<"logStreams">>, []}]), [
+    ?_cloudwatch_test(
+      {"Tests describing log streams with log group name provided",
+        ?_f(erlcloud_cloudwatch_logs:describe_log_streams(
+          ?LOG_GROUP_NAME_PREFIX
+        )),
+        [{<<"Action">>, <<"DescribeLogStreams">>},
+          {<<"Version">>, ?API_VERSION},
+          {<<"limit">>, ?DEFAULT_LIMIT},
+          {<<"logGroupName">>, ?LOG_GROUP_NAME_PREFIX}]}
+    ),
+    ?_cloudwatch_test(
+      {"Tests describing log groups with custom AWS config and"
+      "log group name provided",
+        ?_f(erlcloud_cloudwatch_logs:describe_log_streams(
+          ?LOG_GROUP_NAME_PREFIX,
+          erlcloud_aws:default_config()
+        )),
+        [{<<"Action">>, <<"DescribeLogStreams">>},
+          {<<"Version">>, ?API_VERSION},
+          {<<"limit">>, ?DEFAULT_LIMIT},
+          {<<"logGroupName">>, ?LOG_GROUP_NAME_PREFIX}]}
+    ),
+    ?_cloudwatch_test(
+      {"Tests describing log groups with log group name and "
+      "log stream name prefix provided",
+        ?_f(erlcloud_cloudwatch_logs:describe_log_streams(
+          ?LOG_GROUP_NAME_PREFIX,
+          ?LOG_STREAM_NAME_PREFIX
+        )),
+        [{<<"Action">>, <<"DescribeLogStreams">>},
+          {<<"Version">>, ?API_VERSION},
+          {<<"limit">>, ?DEFAULT_LIMIT},
+          {<<"logGroupName">>, ?LOG_GROUP_NAME_PREFIX},
+          {<<"logStreamNamePrefix">>, ?LOG_STREAM_NAME_PREFIX}]}
+    ),
+    ?_cloudwatch_test(
+      {"Tests describing log groups with custom AWS config, "
+      "log group name and log stream name prefix provided",
+        ?_f(erlcloud_cloudwatch_logs:describe_log_streams(
+          ?LOG_GROUP_NAME_PREFIX,
+          ?LOG_STREAM_NAME_PREFIX,
+          erlcloud_aws:default_config()
+        )),
+        [{<<"Action">>, <<"DescribeLogStreams">>},
+          {<<"Version">>, ?API_VERSION},
+          {<<"limit">>, ?DEFAULT_LIMIT},
+          {<<"logGroupName">>, ?LOG_GROUP_NAME_PREFIX},
+          {<<"logStreamNamePrefix">>, ?LOG_STREAM_NAME_PREFIX}]}
+    ),
+    ?_cloudwatch_test(
+      {"Tests describing log groups with custom AWS config, "
+      "log group name and log stream name prefix and limit provided",
+        ?_f(erlcloud_cloudwatch_logs:describe_log_streams(
+          ?NON_DEFAULT_LIMIT,
+          ?LOG_GROUP_NAME_PREFIX,
+          ?LOG_STREAM_NAME_PREFIX,
+          erlcloud_aws:default_config()
+        )),
+        [{<<"Action">>, <<"DescribeLogStreams">>},
+          {<<"Version">>, ?API_VERSION},
+          {<<"limit">>, ?NON_DEFAULT_LIMIT},
+          {<<"logGroupName">>, ?LOG_GROUP_NAME_PREFIX},
+          {<<"logStreamNamePrefix">>, ?LOG_STREAM_NAME_PREFIX}]}
+    ),
+    ?_cloudwatch_test(
+      {"Tests describing log groups with custom AWS config, "
+      "log group name, log stream name prefix, limit and pagination token provided",
+        ?_f(erlcloud_cloudwatch_logs:describe_log_streams(
+          ?NON_DEFAULT_LIMIT,
+          ?LOG_GROUP_NAME_PREFIX,
+          ?LOG_STREAM_NAME_PREFIX,
+          ?PAGING_TOKEN,
+          erlcloud_aws:default_config()
+        )),
+        [{<<"Action">>, <<"DescribeLogStreams">>},
+          {<<"Version">>, ?API_VERSION},
+          {<<"limit">>, ?NON_DEFAULT_LIMIT},
+          {<<"nextToken">>, ?PAGING_TOKEN},
+          {<<"logGroupName">>, ?LOG_GROUP_NAME_PREFIX},
+          {<<"logStreamNamePrefix">>, ?LOG_STREAM_NAME_PREFIX}]}
+    ),
+    ?_cloudwatch_test(
+      {"Tests describing log groups with custom AWS config, "
+      "log group name, log stream name prefix, limit, pagination token, "
+      "descending order by log stream name provided",
+        ?_f(erlcloud_cloudwatch_logs:describe_log_streams(
+          ?DESCEDING_ORDER,
+          ?NON_DEFAULT_LIMIT,
+          ?LOG_GROUP_NAME_PREFIX,
+          ?LOG_STREAM_NAME_PREFIX,
+          ?PAGING_TOKEN,
+          ?ORDER_BY_LOG_STREAM_NAME_ATOM,
+          erlcloud_aws:default_config()
+        )),
+        [{<<"Action">>, <<"DescribeLogStreams">>},
+          {<<"Version">>, ?API_VERSION},
+          {<<"descending">>, ?DESCEDING_ORDER},
+          {<<"limit">>, ?NON_DEFAULT_LIMIT},
+          {<<"nextToken">>, ?PAGING_TOKEN},
+          {<<"logGroupName">>, ?LOG_GROUP_NAME_PREFIX},
+          {<<"logStreamNamePrefix">>, ?LOG_STREAM_NAME_PREFIX},
+          {<<"orderBy">>, ?ORDER_BY_LOG_STREAM_NAME_BIN}]}
+    ),
+    ?_cloudwatch_test(
+      {"Tests describing log groups with custom AWS config, "
+      "log group name, log stream name prefix, limit, pagination token, "
+      "descending order by log event time provided",
+        ?_f(erlcloud_cloudwatch_logs:describe_log_streams(
+          ?DESCEDING_ORDER,
+          ?NON_DEFAULT_LIMIT,
+          ?LOG_GROUP_NAME_PREFIX,
+          ?LOG_STREAM_NAME_PREFIX,
+          ?PAGING_TOKEN,
+          ?ORDER_BY_LOG_EVENT_TIME_ATOM,
+          erlcloud_aws:default_config()
+        )),
+        [{<<"Action">>, <<"DescribeLogStreams">>},
+          {<<"Version">>, ?API_VERSION},
+          {<<"descending">>, ?DESCEDING_ORDER},
+          {<<"limit">>, ?NON_DEFAULT_LIMIT},
+          {<<"nextToken">>, ?PAGING_TOKEN},
+          {<<"logGroupName">>, ?LOG_GROUP_NAME_PREFIX},
+          {<<"logStreamNamePrefix">>, ?LOG_STREAM_NAME_PREFIX},
+          {<<"orderBy">>, ?ORDER_BY_LOG_EVENT_TIME_BIN}]}
+    )
+  ]).
+
+
+describe_log_streams_output_tests(_) ->
+  output_tests(?_f(erlcloud_cloudwatch_logs:describe_log_streams(
+    ?LOG_GROUP_NAME_PREFIX
+  )), [
+    ?_cloudwatch_test(
+      {"Tests describing all log streams",
+        jsx:encode([{<<"logStreams">>, [?LOG_STREAMS]}]),
+        {ok, [?LOG_STREAMS], undefined}}
+    )
+  ]).
 
 %%==============================================================================
 %% Internal functions
